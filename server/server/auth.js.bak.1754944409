@@ -1,0 +1,173 @@
+import { Router } from 'express';
+import db from './db.js';
+import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
+import { body, validationResult } from 'express-validator';
+import multer from 'multer';
+import path from 'node:path';
+import fs from 'node:fs';
+import { v4 as uuid } from 'uuid';
+import { sendMail } from './mailer.js';
+import rateLimit from 'express-rate-limit';
+
+const router = Router();
+const uploadDir = path.resolve(process.cwd(), 'uploads');
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+const upload = multer({ dest: uploadDir, limits: { fileSize: 5 * 1024 * 1024 } });
+
+const Users = {
+  create: db.prepare('INSERT INTO users (id,email,password_hash,name,avatar_url,created_at) VALUES (@id,@email,@password_hash,@name,@avatar_url,@created_at)'),
+  byEmail: db.prepare('SELECT * FROM users WHERE email = ?'),
+  byId: db.prepare('SELECT * FROM users WHERE id = ?'),
+  verifyEmail: db.prepare('UPDATE users SET email_verified = 1 WHERE email = ?'),
+  updateAvatar: db.prepare('UPDATE users SET avatar_url = ? WHERE id = ?'),
+  updateName: db.prepare('UPDATE users SET name = ? WHERE id = ?'),
+  updatePassword: db.prepare('UPDATE users SET password_hash = ? WHERE email = ?')
+};
+const Codes = {
+  insert: db.prepare('INSERT INTO email_codes (id,email,code,purpose,expires_at,used,created_at) VALUES (@id,@email,@code,@purpose,@expires_at,0,@created_at)'),
+  findValid: db.prepare('SELECT * FROM email_codes WHERE email = ? AND purpose = ? AND used = 0 AND expires_at > ? ORDER BY created_at DESC'),
+  useCode: db.prepare('UPDATE email_codes SET used = 1 WHERE id = ?')
+};
+
+function jwtSign(u) {
+  return jwt.sign({ id: u.id, email: u.email, name: u.name, avatar_url: u.avatar_url, email_verified: u.email_verified }, process.env.JWT_SECRET, { expiresIn: '7d' });
+}
+function setAuthCookie(res, token) {
+  res.cookie('token', token, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: String(process.env.SECURE_COOKIES).toLowerCase() === 'true',
+    maxAge: 7 * 24 * 3600 * 1000
+  });
+}
+function sanitize(u) { if (!u) return null; const { password_hash, ...rest } = u; return rest; }
+
+const authLimiter = rateLimit({ windowMs: 15*60*1000, max: 50 });
+const loginLimiter = rateLimit({ windowMs: 10*60*1000, max: 20 });
+const codeLimiter  = rateLimit({ windowMs: 10*60*1000, max: 10 });
+
+// 发送验证码（注册/验证/重置）
+router.post('/send-code',
+  codeLimiter,
+  body('email').isEmail(),
+  body('purpose').isIn(['verify','reset']),
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ error: errors.array()[0].msg });
+    const { email, purpose } = req.body;
+    const code = String(Math.floor(100000 + Math.random()*900000));
+    const rec = { id: uuid(), email, code, purpose, created_at: Date.now(), expires_at: Date.now() + 10*60*1000 };
+    Codes.insert.run(rec);
+    const subj = purpose==='reset' ? '绿皮书 - 重置密码验证码' : '绿皮书 - 邮箱验证验证码';
+    const html = `<div style="font:14px/1.6 -apple-system,Segoe UI,Roboto,Arial">
+      <h2>${subj}</h2>
+      <p>验证码：<b style="font-size:20px">${code}</b>（10分钟内有效）</p>
+      <p>如果不是你本人操作，请忽略本邮件。</p>
+    </div>`;
+    try { await sendMail(email, subj, html); } catch { return res.status(500).json({ error: '邮件发送失败' }); }
+    res.json({ ok:true });
+  }
+);
+
+// 注册（不自动登录；自动发验证验证码）
+router.post('/register',
+  authLimiter,
+  body('email').isEmail().withMessage('邮箱格式不正确'),
+  body('password').isLength({ min: 6 }).withMessage('密码至少 6 位'),
+  body('name').optional().isLength({ min: 1, max: 32 }),
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ error: errors.array()[0].msg });
+
+    const { email, password, name = '' } = req.body || {};
+    if (Users.byEmail.get(email)) return res.status(409).json({ error: '该邮箱已注册' });
+
+    const id = uuid();
+    const password_hash = await bcrypt.hash(password, 10);
+    Users.create.run({ id, email, password_hash, name, avatar_url: null, created_at: Date.now() });
+
+    // 自动发一封验证邮件（含验证码）
+    const code = String(Math.floor(100000 + Math.random()*900000));
+    Codes.insert.run({ id: uuid(), email, code, purpose:'verify', created_at: Date.now(), expires_at: Date.now()+10*60*1000 });
+    try { await sendMail(email, '绿皮书 - 邮箱验证验证码', `<p>验证码：<b>${code}</b>（10分钟内有效）</p>`); } catch {}
+
+    // 不设置 cookie，返回下一步指引
+    res.json({ ok: true, next: 'verify' });
+  }
+);
+
+// 验证邮箱（仅标记通过，不登录）
+router.post('/verify-email',
+  authLimiter,
+  body('email').isEmail(),
+  body('code').isLength({min:6,max:6}),
+  (req, res) => {
+    const { email, code } = req.body;
+    const rows = Codes.findValid.all(email, 'verify', Date.now());
+    const hit = rows.find(r => r.code === code);
+    if (!hit) return res.status(400).json({ error: '验证码无效或已过期' });
+    Codes.useCode.run(hit.id);
+    Users.verifyEmail.run(email);
+    const u = Users.byEmail.get(email);
+    res.json({ ok:true, user: sanitize(u) });
+  }
+);
+
+// 登录（要求邮箱已验证）
+router.post('/login',
+  loginLimiter,
+  body('email').isEmail(),
+  body('password').isLength({ min: 6 }),
+  async (req, res) => {
+    const { email, password } = req.body || {};
+    const u = Users.byEmail.get(email);
+    if (!u) return res.status(400).json({ error: '邮箱或密码错误' });
+    const ok = await bcrypt.compare(password, u.password_hash);
+    if (!ok) return res.status(400).json({ error: '邮箱或密码错误' });
+    if (!u.email_verified) return res.status(403).json({ error: '邮箱未验证，请先完成验证', code: 'email_not_verified' });
+
+    const token = jwtSign(u);
+    setAuthCookie(res, token);
+    res.json({ ok: true, user: sanitize(u) });
+  }
+);
+
+// 退出
+router.post('/logout', (req, res) => { res.clearCookie('token'); res.json({ ok:true }); });
+
+// 当前用户
+router.get('/me', (req, res) => {
+  const token = req.cookies?.token;
+  if (!token) return res.json({ user: null });
+  try { const payload = jwt.verify(token, process.env.JWT_SECRET); const u = Users.byId.get(payload.id); res.json({ user: sanitize(u) }); }
+  catch { res.json({ user: null }) }
+});
+
+// 更新头像
+router.post('/avatar', upload.single('file'), (req, res) => {
+  const token = req.cookies?.token;
+  if (!token) return res.status(401).json({ error: '未登录' });
+  let payload; try { payload = jwt.verify(token, process.env.JWT_SECRET) } catch { return res.status(401).json({ error: '未登录' }) }
+  if (!req.file) return res.status(400).json({ error: '未接收到文件' });
+  const urlPath = `/uploads/${req.file.filename}`;
+  Users.updateAvatar.run(urlPath, payload.id);
+  res.json({ ok: true, avatar_url: urlPath });
+});
+
+export function authRequired(req, res, next) {
+  const token = req.cookies?.token;
+  if (!token) return res.status(401).json({ error: 'Unauthorized' });
+  try { req.user = jwt.verify(token, process.env.JWT_SECRET); next(); }
+  catch { return res.status(401).json({ error: 'Unauthorized' }) }
+}
+
+export function verifyRequired(req, res, next) {
+  try {
+    const payload = req.user || jwt.verify(req.cookies?.token, process.env.JWT_SECRET);
+    if (!payload?.email_verified) return res.status(403).json({ error: 'Email not verified', code: 'email_not_verified' });
+    req.user = payload; next();
+  } catch { return res.status(401).json({ error: 'Unauthorized' }) }
+}
+
+export default router;

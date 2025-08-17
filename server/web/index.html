@@ -1,0 +1,29 @@
+<!doctype html><html lang="zh-CN"><head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>ZHR · Chat</title>
+<link rel="stylesheet" href="/styles.css"/>
+<!-- Markdown & 安全清洗 & 代码高亮（CDN） -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github-dark.min.css">
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/highlight.min.js"></script>
+</head><body>
+<div class="app">
+  <header><div class="brand">ZHR · Chat</div>
+    <div class="controls">
+      <select id="model">
+        <option value="gpt-4o-mini" selected>gpt-4o-mini (快&省)</option>
+        <option value="gpt-4o">gpt-4o（更强）</option>
+      </select>
+      <button id="clear">清空</button>
+      <button id="stop">停止</button>
+    </div>
+  </header>
+  <main id="chat"></main>
+  <footer>
+    <textarea id="prompt" rows="2" placeholder="说点什么…(Shift+Enter换行)"></textarea>
+    <button id="send">发送</button>
+  </footer>
+</div>
+<script src="/app.js"></script>
+</body></html>

@@ -1,0 +1,10 @@
+@import "./styles/home.css";
+@import "./styles/theme.css";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.card { background: theme('colors.card'); border-radius: 1rem; box-shadow: theme('boxShadow.soft'); border: 1px solid #2a3045 }
+.bubble-user { background: #1a2030; border-radius: 12px; padding: 12px; }
+.bubble-ai { background: #141a28; border-radius: 12px; padding: 12px; }
+pre code { font-family: ui-monospace, SFMono-Regular, Consolas, Menlo, monospace; }

@@ -1,0 +1,63 @@
+import { Router } from 'express';
+import svgCaptcha from 'svg-captcha';
+import db from './db.js';
+import { v4 as uuid } from 'uuid';
+import bcrypt from 'bcryptjs';
+
+const router = Router();
+
+const Captchas = {
+  insert: db.prepare('INSERT INTO captcha_challenges (id,answer_hash,purpose,expires_at,used,created_at) VALUES (@id,@answer_hash,@purpose,@expires_at,0,@created_at)'),
+  get: db.prepare('SELECT * FROM captcha_challenges WHERE id = ?'),
+  getLatestByPurpose: db.prepare(`SELECT * FROM captcha_challenges WHERE purpose = ? AND used = 0 AND expires_at > ? ORDER BY created_at DESC LIMIT 1`),
+  use: db.prepare('UPDATE captcha_challenges SET used = 1 WHERE id = ?')
+};
+const Sliders = {
+  insert: db.prepare('INSERT INTO slider_challenges (id,target,expires_at,used,created_at) VALUES (@id,@target,@expires_at,0,@created_at)'),
+  get: db.prepare('SELECT * FROM slider_challenges WHERE id = ?'),
+  use: db.prepare('UPDATE slider_challenges SET used = 1 WHERE id = ?')
+};
+
+router.get('/captcha', (req, res) => {
+  const purpose = String(req.query.purpose || 'login');
+  const cap = svgCaptcha.create({
+    size: 5, noise: 3, color: true, background: '#f8fafc',
+    width: 140, height: 48, ignoreChars: '0Oo1Il'
+  });
+  const id = uuid();
+  const answerLC = String(cap.text || '').toLowerCase();
+  Captchas.insert.run({ id, answer_hash: bcrypt.hashSync(answerLC, 6), purpose, created_at: Date.now(), expires_at: Date.now()+10*60*1000 });
+
+  // 关键：把“正确答案”打到日志里（journalctl 可见）
+  console.log(`[CAPTCHA] purpose=${purpose} id=${id} answer="${answerLC}"`);
+
+  res.json({ id, svg: cap.data, expiresIn: 600 });
+});
+
+router.get('/slider/new', (req, res) => {
+  const id = uuid();
+  const target = Math.floor(12 + Math.random()*76); // 12..88
+  const bg = 'https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?q=80&w=1200&auto=format&fit=crop';
+  Sliders.insert.run({ id, target, created_at: Date.now(), expires_at: Date.now()+10*60*1000 });
+  res.json({ id, width: 300, height: 160, notchX: target, bg, expiresIn: 600 });
+});
+
+// 允许缺少 captchaId 时，用该用途“最新一条未使用且未过期”的验证码做校验（便于前端未传 id 的情况）
+export function verifyCaptchaOrThrow(purpose, id, answer) {
+  const now = Date.now();
+  let row = id ? Captchas.get.get(id) : Captchas.getLatestByPurpose.get(purpose, now);
+  if (!row || row.used || row.purpose !== purpose || row.expires_at < now) throw new Error('验证码无效或过期');
+  if (!answer || !bcrypt.compareSync(String(answer).toLowerCase(), row.answer_hash)) throw new Error('验证码错误');
+  Captchas.use.run(row.id);
+}
+
+export function verifySliderOrThrow(id, value) {
+  if (!id) throw new Error('需要滑块验证');
+  const row = Sliders.get.get(id);
+  if (!row || row.used || row.expires_at < Date.now()) throw new Error('滑块验证无效或过期');
+  const v = Math.round(Number(value));
+  if (Math.abs(v - row.target) > 3) throw new Error('滑块位置不正确');
+  Sliders.use.run(id);
+}
+
+export default router;

@@ -1,0 +1,67 @@
+import { Router } from 'express';
+import svgCaptcha from 'svg-captcha';
+import db from './db.js';
+import { v4 as uuid } from 'uuid';
+import bcrypt from 'bcryptjs';
+
+const router = Router();
+
+const Captchas = {
+  insert: db.prepare('INSERT INTO captcha_challenges (id,answer_hash,purpose,expires_at,used,created_at) VALUES (@id,@answer_hash,@purpose,@expires_at,0,@created_at)'),
+  get: db.prepare('SELECT * FROM captcha_challenges WHERE id = ?'),
+  use: db.prepare('UPDATE captcha_challenges SET used = 1 WHERE id = ?')
+};
+const Sliders = {
+  insert: db.prepare('INSERT INTO slider_challenges (id,target,expires_at,used,created_at) VALUES (@id,@target,@expires_at,0,@created_at)'),
+  get: db.prepare('SELECT * FROM slider_challenges WHERE id = ?'),
+  use: db.prepare('UPDATE slider_challenges SET used = 1 WHERE id = ?')
+};
+
+// 生成图片验证码（SVG）
+router.get('/captcha', (req, res) => {
+  const purpose = String(req.query.purpose || 'login');
+  const cap = svgCaptcha.create({
+    size: 5,
+    noise: 3,
+    color: true,
+    background: "#f8fafc",
+    width: 120, height: 44,
+    ignoreChars: '0Oo1Il'
+  });
+  const id = uuid();
+  const answer_hash = bcrypt.hashSync(cap.text.toLowerCase(), 6);
+  Captchas.insert.run({ id, answer_hash, purpose, created_at: Date.now(), expires_at: Date.now()+10*60*1000 });
+  res.json({ id, svg: cap.data, expiresIn: 600 });
+});
+
+// 生成滑块挑战（返回 notch 位置百分比）
+router.get('/slider/new', (req, res) => {
+  const id = uuid();
+  const target = Math.floor(12 + Math.random()*76); // 12..88
+  Sliders.insert.run({ id, target, created_at: Date.now(), expires_at: Date.now()+10*60*1000 });
+  // 前端可用此图当背景；也可用你自己的图
+  const bg = 'https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?q=80&w=1200&auto=format&fit=crop';
+  res.json({ id, width: 300, height: 160, notchX: target, bg, expiresIn: 600 });
+});
+
+// 校验函数
+export function verifyCaptchaOrThrow(purpose, id, answer) {
+  if (!id || !answer) throw new Error('需要图片验证码');
+  const row = Captchas.get.get(id);
+  if (!row || row.used || row.purpose !== purpose || row.expires_at < Date.now()) throw new Error('验证码无效或过期');
+  const ok = bcrypt.compareSync(String(answer).toLowerCase(), row.answer_hash);
+  if (!ok) throw new Error('验证码错误');
+  Captchas.use.run(id);
+}
+
+export function verifySliderOrThrow(id, value) {
+  if (!id) throw new Error('需要滑块验证');
+  const row = Sliders.get.get(id);
+  if (!row || row.used || row.expires_at < Date.now()) throw new Error('滑块验证无效或过期');
+  const v = Math.round(Number(value));
+  const ok = Math.abs(v - row.target) <= 3; // 允许±3的误差
+  if (!ok) throw new Error('滑块位置不正确');
+  Sliders.use.run(id);
+}
+
+export default router;

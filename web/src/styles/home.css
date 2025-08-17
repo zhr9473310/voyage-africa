@@ -1,0 +1,60 @@
+/* --- 轻量 reveal：滚动进入视口时上浮显现 --- */
+.reveal { opacity:0; transform: translateY(18px) scale(.98); transition: all .7s cubic-bezier(.2,.7,.2,1); }
+.reveal.in { opacity:1; transform: none; }
+
+/* --- 首屏轮播（Hero） --- */
+.hero-wrap{position:relative;border-radius:28px;overflow:hidden}
+.hero-slide{position:relative;height:75vh;min-height:520px;background-size:cover;background-position:center}
+.hero-overlay{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.15),rgba(0,0,0,.35))}
+.hero-content{position:absolute;left:5%;bottom:10%;color:#fff;max-width:760px}
+.hero-kicker{letter-spacing:.25em;text-transform:uppercase;font-weight:900;font-size:12px;background:rgba(255,255,255,.9);color:#0b1324;border-radius:999px;padding:6px 10px;display:inline-block}
+.hero-title{margin:10px 0 8px;font-size: clamp(36px,4.2vw,60px);font-weight:900;line-height:1.1;
+  background:linear-gradient(90deg,#22d3ee,#14b8a6,#ff7a00);-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero-sub{opacity:.96;font-size:18px}
+.hero-ctas{display:flex;gap:12px;margin-top:16px}
+.hero-dots{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);display:flex;gap:8px}
+.hero-dots b{width:9px;height:9px;border-radius:999px;background:rgba(255,255,255,.6)}
+.hero-dots b.on{background:#fff;box-shadow:0 0 0 4px rgba(255,255,255,.25);}
+
+/* 进度条 */
+.hero-progress{position:absolute;left:0;right:0;bottom:0;height:3px;background:rgba(255,255,255,.25)}
+.hero-progress i{display:block;height:100%;width:0%;background:#fff;transition:width .2s linear}
+
+/* 轻量 parallax */
+.hero-parallax{position:absolute;inset:0;background:radial-gradient(600px 280px at 10% 15%,rgba(255,255,255,.15),transparent);mix-blend-mode:soft-light;}
+
+/* --- 马赛克图片（艺术切割） --- */
+.mosaic{display:grid;grid-template-columns:2fr 1.5fr 1.2fr;grid-auto-rows:220px;gap:16px}
+.mosaic .tile{position:relative;border-radius:22px;overflow:hidden}
+.mosaic .tile img{width:100%;height:100%;object-fit:cover;transition:transform .8s cubic-bezier(.2,.7,.2,1)}
+.mosaic .tile:hover img{transform:scale(1.06)}
+.mosaic .tile .label{position:absolute;left:12px;bottom:12px;background:rgba(0,0,0,.55);color:#fff;padding:6px 10px;border-radius:999px;font-size:12px}
+.mosaic .clip-1{clip-path:polygon(0 0, 100% 0, 100% 85%, 85% 100%, 0 100%)}
+.mosaic .clip-2{clip-path:polygon(15% 0, 100% 0, 100% 100%, 0 100%, 0 15%)}
+
+/* --- 目的地灵感 --- */
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
+.card{background:#fff;border:1px solid #e8edf5;border-radius:16px;overflow:hidden;box-shadow:0 10px 20px rgba(20,26,40,.06)}
+.card .img{height:210px;background-size:cover;background-position:center;transform:scale(1);transition:transform .8s ease}
+.card:hover .img{transform:scale(1.06)}
+.card .b{padding:14px}
+.badge{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;background:#e6fffb;color:#0b1324;border:1px solid #b6f2e9;font-size:12px}
+
+/* --- 数字条（轻量计数） --- */
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.stat{background:#fff;border:1px solid #e8edf5;border-radius:14px;padding:16px;text-align:center}
+.stat .n{font-weight:900;font-size:28px;color:#14b8a6}
+
+/* --- 跑马灯 --- */
+.marquee{overflow:hidden;white-space:nowrap;border-radius:12px;background:#fff;border:1px dashed #e6eaf2}
+.marquee span{display:inline-block;padding:10px 16px;animation:mar 18s linear infinite}
+@keyframes mar{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+
+/* 容器细节 */
+.section{margin-top:32px}
+.h2{font-size:28px;margin:10px 0}
+.kicker{letter-spacing:.25em;text-transform:uppercase;color:#14b8a6;font-weight:900;font-size:12px}
+
+/* hero 背图 */
+.hero-slide{position:relative;height:75vh;min-height:520px}
+.hero-slide .hero-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;filter:saturate(1.06) brightness(1.04)}

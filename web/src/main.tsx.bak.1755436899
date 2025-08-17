@@ -1,0 +1,39 @@
+import React from 'react'
+import ReactDOM from 'react-dom/client'
+import './index.css'
+import AppLayout from './App'
+import Home from './pages/Home'
+import Chat from './pages/Chat'
+import Login from './pages/Login'
+import Register from './pages/Register'
+import Profile from './pages/Profile'
+import VerifyEmail from './pages/VerifyEmail'
+import Forgot from './pages/Forgot'
+import Reset from './pages/Reset'
+import { AuthProvider } from './auth/AuthContext'
+import RequireAuth from './auth/RequireAuth'
+import RequireVerified from './auth/RequireVerified'
+
+  {
+    path: '/',
+    element: <AppLayout />,
+    children: [
+      { index: true, element: <Home /> },
+      { path: 'login', element: <Login /> },
+      { path: 'register', element: <Register /> },
+      { path: 'verify', element: <VerifyEmail /> },
+      { path: 'forgot', element: <Forgot /> },
+      { path: 'reset', element: <Reset /> },
+      { path: 'profile', element: <RequireAuth><Profile/></RequireAuth> },
+      { path: 'chat', element: <RequireAuth><RequireVerified><Chat/></RequireVerified></RequireAuth> },
+    ]
+  }
+])
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <AuthProvider>
+      
+    </AuthProvider>
+  </React.StrictMode>,
+)

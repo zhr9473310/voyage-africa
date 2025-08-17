@@ -1,0 +1,25 @@
+# /etc/nginx/sites-available/chat.conf
+server {
+  listen 80;
+  server_name YOUR_DOMAIN;
+  # serve static site (front-end)
+  root /var/www/chatgpt-on-aliyun/web;
+  index index.html;
+
+  # proxy API to node
+  location /api/ {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_buffering off;
+    add_header X-Accel-Buffering no;
+  }
+
+  location ~* \.(js|css|png|jpg|jpeg|gif|svg|ico)$ {
+    expires 7d;
+    access_log off;
+  }
+}

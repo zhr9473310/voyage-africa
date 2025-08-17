@@ -1,0 +1,149 @@
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import type { ChatMessage, Role } from './types'
+import { parseNDJSON } from './ndjson'
+import { marked } from 'marked'
+import DOMPurify from 'dompurify'
+import hljs from 'highlight.js'
+
+function useLocalStorage<T>(key: string, initial: T) {
+  const [val, setVal] = useState<T>(() => {
+    const v = localStorage.getItem(key)
+    return v ? JSON.parse(v) as T : initial
+  })
+  useEffect(() => { localStorage.setItem(key, JSON.stringify(val)) }, [key, val])
+  return [val, setVal] as const
+}
+
+const Header: React.FC<{
+  model: string
+  setModel: (m: string) => void
+  onClear: () => void
+  onStop: () => void
+}> = ({ model, setModel, onClear, onStop }) => (
+  <header className="sticky top-2 z-10 flex items-center justify-between p-3 bg-[#0e111a] border border-[#2a3045] rounded-2xl shadow-soft">
+    <div className="font-extrabold text-xl">ZHR · Chat (React)</div>
+    <div className="flex gap-2 items-center">
+      <select
+        value={model}
+        onChange={e => setModel(e.target.value)}
+        className="bg-[#1c2233] text-text border border-[#2a3045] rounded-xl px-3 py-2"
+        title="后端可能会忽略前端模型，请以服务器配置为准"
+      >
+        <option value="doubao-pro-32k">doubao-pro-32k</option>
+        <option value="doubao-lite-32k">doubao-lite-32k</option>
+      </select>
+      <button onClick={onClear} className="bg-[#1c2233] border border-[#2a3045] rounded-xl px-3 py-2">清空</button>
+      <button onClick={onStop} className="bg-[#1c2233] border border-[#2a3045] rounded-xl px-3 py-2">停止</button>
+    </div>
+  </header>
+)
+
+const Msg: React.FC<{ role: Role; content: string }> = ({ role, content }) => {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (role === 'assistant') {
+      try {
+        ref.current!.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block as HTMLElement))
+      } catch {}
+    }
+  }, [content, role])
+  const html = useMemo(() => role === 'assistant'
+    ? DOMPurify.sanitize(marked.parse(content || ''))
+    : undefined, [content, role])
+  return (
+    <div className="msg flex gap-3 p-4 border-b border-[#20263a]">
+      <div className="role flex-0 text-muted w-[52px] text-right">{role === 'user' ? '你' : 'AI'}</div>
+      <div ref={ref} className={role === 'user' ? 'bubble-user flex-1' : 'bubble-ai flex-1'} dangerouslySetInnerHTML={role === 'assistant' ? { __html: html! } : undefined}>
+        {role === 'user' ? content : undefined}
+      </div>
+    </div>
+  )
+}
+
+const App: React.FC = () => {
+  const [model, setModel] = useLocalStorage('zhr_model', 'doubao-pro-32k')
+  const [history, setHistory] = useLocalStorage<ChatMessage[]>('zhr_history', [])
+  const [input, setInput] = useState('')
+  const [loading, setLoading] = useState(false)
+  const controllerRef = useRef<AbortController | null>(null)
+  const chatRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => { chatRef.current?.scrollTo(0, chatRef.current.scrollHeight) }, [history])
+
+  const send = async () => {
+    const q = input.trim()
+    if (!q || loading) return
+    setInput('')
+    const newHistory = [...history, { role: 'user', content: q }, { role: 'assistant', content: '' }]
+    setHistory(newHistory)
+    setLoading(true)
+    controllerRef.current = new AbortController()
+
+    try {
+      const res = await fetch('/api/chat-stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: newHistory, model }),
+        signal: controllerRef.current.signal
+      })
+      if (!res.ok || !res.body) {
+        const j = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+        throw new Error((j as any).error || '请求失败')
+      }
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let acc = ''
+      while (true) {
+        const { value, done } = await reader.read()
+        if (done) break
+        const chunk = decoder.decode(value, { stream: true })
+        for (const obj of parseNDJSON(chunk)) {
+          if ('delta' in obj && obj.delta) {
+            acc += obj.delta
+            setHistory(h => {
+              const copy = h.slice()
+              copy[copy.length - 1] = { role: 'assistant', content: acc }
+              return copy
+            })
+          }
+        }
+      }
+    } catch (err: any) {
+      setHistory(h => {
+        const copy = h.slice()
+        copy[copy.length - 1] = { role: 'assistant', content: '❌ ' + (err?.message || '出错了') }
+        return copy
+      })
+    } finally {
+      setLoading(false)
+      controllerRef.current = null
+    }
+  }
+
+  const stop = () => { controllerRef.current?.abort() }
+  const clear = () => setHistory([])
+
+  return (
+    <div className="app max-w-[1100px] mx-auto flex flex-col h-[100dvh] p-3 gap-3">
+      <Header model={model} setModel={setModel} onClear={clear} onStop={stop} />
+      <main ref={chatRef} className="flex-1 overflow-auto p-3 card shadow-inset1">
+        {history.map((m, i) => <Msg key={i} role={m.role} content={m.content} />)}
+      </main>
+      <footer className="flex gap-2">
+        <textarea
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          rows={2}
+          placeholder="说点什么…(Shift+Enter 换行)"
+          className="flex-1 resize-y min-h-[56px] max-h-[200px] bg-[#111523] text-text border border-[#2a3045] rounded-xl p-3 outline-none"
+          onKeyDown={e => {
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
+          }}
+        />
+        <button onClick={send} disabled={loading} className="min-w-[96px] bg-[#1c2233] border border-[#2a3045] rounded-xl px-4 py-2">{loading ? '发送中…' : '发送'}</button>
+      </footer>
+    </div>
+  )
+}
+
+export default App

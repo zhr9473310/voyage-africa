@@ -1,0 +1,27 @@
+# Node
+node_modules/
+npm-debug.log*
+pnpm-lock.yaml
+yarn.lock
+
+# Builds / caches
+dist/
+build/
+.cache/
+.temp/
+
+# Server runtime data
+server/uploads/
+server/data/
+*.sqlite
+*.db
+
+# Secrets
+.env
+.env.*
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
