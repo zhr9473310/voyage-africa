@@ -28,14 +28,13 @@ router.get('/captcha', (req,res)=>{
 router.get('/slider/new', (req,res)=> res.status(200).json({ id: randomUUID(), width:280, height:160, notchX:80, bg:'' }));
 
 // 校验图片验证码（成功后失效）
-export function verifyCaptchaOrThrow(req, purpose='login'){
-  const { captchaId, captcha } = req.body || {};
-  const rec = store.get(captchaId);
+export function verifyCaptchaOrThrow(purpose, id, answer){
+  const rec = store.get(id);
   if (!rec) throw new Error('验证码已过期，请重试');
-  if (Date.now() > rec.exp) { store.delete(captchaId); throw new Error('验证码已过期，请重试'); }
+  if (Date.now() > rec.exp) { store.delete(id); throw new Error('验证码已过期，请重试'); }
   if (purpose && rec.purpose && purpose !== rec.purpose) throw new Error('验证码无效，请刷新');
-  if (norm(captcha) !== rec.ans) throw new Error('验证码错误');
-  store.delete(captchaId);
+  if (norm(answer) !== rec.ans) throw new Error('验证码错误');
+  store.delete(id);
   return true;
 }
 

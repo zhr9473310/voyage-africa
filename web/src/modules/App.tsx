@@ -4,7 +4,7 @@ type Role = 'user'|'assistant'|'system';
 interface ChatMessage { role: Role; content: string; }
 
 function looksLikeJSON(s:string){ const t=s.trim(); return t.startsWith('{')||t.startsWith('[');}
-function pickText(obj:any){
+function pickText(obj:any): string {
   if(!obj) return '';
   if(typeof obj.text==='string') return obj.text;
   if(typeof obj.content==='string') return obj.content;
@@ -44,7 +44,7 @@ export default function ChatModule(){
     const text = input.trim();
     if(!text) return;
     setInput('');
-    const newHistory = [...history, {role:'user', content:text}];
+    const newHistory: ChatMessage[] = [...history, { role: 'user', content: text }];
     setHistory(newHistory);
     setLoading(true);
     try{
