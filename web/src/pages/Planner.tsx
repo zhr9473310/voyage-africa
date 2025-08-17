@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import DOMPurify from 'dompurify';
+import { marked } from 'marked';
 
 const interests = [
   {key:'wildlife', label:'野生动物'},
@@ -48,7 +50,7 @@ export default function Planner(){
     const j = await r.json();
     setBusy(false);
     if (!r.ok) { setResult(`生成失败：${j?.error||r.status}`); return; }
-    setResult(j?.content || j?.answer || '无内容');
+    setResult(j?.text || j?.content || j?.answer || '无内容');
   }
 
   return (
@@ -106,8 +108,11 @@ export default function Planner(){
       </div>
 
       {result && (
-        <div className="card" style={{padding:16, marginTop:16}}>
-          <div className="markdown" dangerouslySetInnerHTML={{__html: window.DOMPurify?.sanitize(window.marked?.parse(result)||result) || result}} />
+        <div className="card" style={{ padding: 16, marginTop: 16 }}>
+          <div
+            className="markdown"
+            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(marked.parse(result) as string) }}
+          />
         </div>
       )}
     </div>
