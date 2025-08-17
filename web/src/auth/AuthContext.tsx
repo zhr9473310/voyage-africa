@@ -1,6 +1,12 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 
-export type User = { id:string; email:string; name?:string|null; avatar_url?:string|null }
+export type User = {
+  id: string;
+  email: string;
+  name?: string | null;
+  avatar_url?: string | null;
+  email_verified?: boolean;
+}
 type Ctx = {
   user: User | null;
   loading: boolean;
